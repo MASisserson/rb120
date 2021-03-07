@@ -1,0 +1,5 @@
+# Ignore test directories and files
+test/
+test.rb
+test.md
+test.yml
