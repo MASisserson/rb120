@@ -33,6 +33,15 @@ module Designable
 end
 
 class Move
+  ACCEPTED_CHOICES = %w(r p sc l sp rock paper scissors lizard spock)
+  WIN_LIST = {
+    'rock' => %w(scissors lizard),
+    'paper' => %w(rock spock),
+    'scissors' => %w(paper lizard),
+    'lizard' => %w(paper spock),
+    'spock' => %w(rock scissors)
+  }
+
   attr_reader :value
 
   def initialize(value)
@@ -47,26 +56,16 @@ class Move
     value
   end
 
-  protected
-
-  VALUES = %w(rock paper scissors lizard spock)
-  ACCEPTED_CHOICES = %w(r p sc l sp rock paper scissors lizard spock)
-  WIN_LIST = {
-    'rock' => %w(scissors lizard),
-    'paper' => %w(rock spock),
-    'scissors' => %w(paper lizard),
-    'lizard' => %w(paper spock),
-    'spock' => %w(rock scissors)
-  }
+  private
 
   def parse_value(value)
-    return value if VALUES.include? value
     case value
     when 'r'  then 'rock'
     when 'p'  then 'paper'
     when 'sc' then 'scissors'
     when 'l'  then 'lizard'
     when 'sp' then 'spock'
+    else           value
     end
   end
 end
@@ -147,7 +146,7 @@ class Computer < Player
   attr_reader :repertoir, :previous_human_move, :previous_winner
 
   def execute_strategy
-    if !previous_human_move        then game_start
+    if    !previous_human_move     then game_start
     elsif previous_human_move == 1 then game_restart
     elsif previous_winner == self  then just_won
     elsif previous_winner          then just_lost
@@ -316,7 +315,7 @@ class ScoreBoard
     @round = 0
   end
 
-  def game_over? # Maybe put tally_score out here, idk
+  def game_over?
     !!find_winner
   end
 
@@ -344,9 +343,9 @@ class ScoreBoard
     prompt "How many wins would you like to play to? (Max 5)"
     answer = nil
     loop do
-      answer = read_response.to_i
-      break if (1..5).include? answer
-      prompt "Please give an answer between 1 and 5."
+      answer = read_response
+      break if ((1..5).include? answer.to_i) && (answer.to_i.to_s == answer)
+      prompt "Please give an integer between 1 and 5."
     end
     answer
   end
@@ -408,8 +407,8 @@ class RPSGame
 
   def display_move_lists
     prompt "Here are the move lists:"
-    p human.move_history
-    p computer.move_history
+    puts "#{human}: #{human.move_history}"
+    puts "#{computer}: #{computer.move_history}"
   end
 
   def display_welcome_message
