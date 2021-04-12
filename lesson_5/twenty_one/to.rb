@@ -1,3 +1,5 @@
+require 'pry'
+
 module Designable
   def colorize(text, color_code)
     "\e[#{color_code}m#{text}\e[0m"
@@ -76,8 +78,8 @@ module Validatable # Standard Version
     answer = nil
     loop do
       answer = gets.chomp.strip
-      break if answer == answer.to_i.to_s
-      prompt "Please input an integer without extraneous zeroes."
+      break if answer =~ /\A[-+]?\d+\z/
+      prompt "Please input an integer."
     end
     answer.to_i
   end
@@ -144,6 +146,7 @@ end
 
 module Requestable
   def request_name
+    system 'clear'
     prompt_same_line_input "You're name please: "
     read_string_response_greater_than 0
   end
@@ -154,8 +157,7 @@ class Deck
   RANKS = %w(A 2 3 4 5 6 7 8 9 10 J Q K)
 
   def initialize
-    @deck = []
-    build_deck
+    reset
   end
 
   def deal(quantity, receiver)
@@ -239,69 +241,196 @@ class Card
 end
 
 class Player
-  attr_accessor :name, :hand, :stay
+  include Comparable, Designable, Validatable
 
-  def initialize(name=nil)
+  attr_reader :name
+  attr_accessor :hand, :hand_value, :stay
+
+  def initialize(name)
     @name = name
     @hand = []
+    @hand_value = 0
     @stay = false
   end
 
   def display_hand
     hand.each(&:display_front)
+    update_hand_value
+    display_hand_value
   end
 
   def reset
     self.hand = []
   end
 
+  def <=>(other)
+    hand_value <=> other.hand_value
+  end
+
+  def bust? # Player
+    hand_value > TwentyOne::WIN_POINT
+  end
+
   def to_s
     name
+  end
+
+  private
+
+  def display_hand_value # Player
+    new_line
+    prompt "#{name}'s Hand Value: #{hand_value}."
+  end
+
+  def count_aces(cards) # Player
+    cards.select { |card| card.rank == 'A' }.size
+  end
+
+  def update_hand_value # Player
+    sum = 0
+    hand.each { |card| sum += TwentyOne::CARD_VALUES[card.rank] }
+
+    ace_count = count_aces(hand)
+
+    until ace_count.zero?
+      break if !bust?
+      ace_count -= 1
+      sum -= 10
+    end
+
+    self.hand_value = sum
   end
 end
 
 class Human < Player
-  attr_reader :money
+  attr_accessor :money, :pool
 
   def initialize(name=nil)
     super
     @money = 100
+    @pool = 0
   end
 
-  def wager(amount)
-    self.money = money - amount
+  def openning_wager
+    return if !pool.zero?
+    clear_screen
+    prompt "Please make your wager."
+    prompt "We accept anywhere from $1 to $20. We only operate in dollars."
+    prompt "It seems you presently have #{yellow('$' + money.to_s)}"
+    amount = read_integer_response_between(1, 20)
+    wager amount
   end
 
-  def pay_out(amount)
-    self.money += amount
+  def update_pool(winner) # Human (Put @pool in Human)
+    if winner == self
+      self.pool *= 2
+    else
+      self.pool = 0
+    end
+  end
+
+  def pay_out
+    self.money += pool
+    self.pool = 0
+  end
+
+  def turn(deck, dealer)
+    loop do
+      display_pool
+      dealer.display_first_card
+      display_hand
+      hit_or_stay(deck)
+      update_hand_value
+      break if bust? || stay
+    end
+  end
+
+  def hit_or_stay(deck)
+    prompt "Would you like to hit?"
+    return deck.deal(1, player.hand) if yes?
+    self.stay = true
+  end
+
+  def loss
+    clear_screen
+    prompt "I am sorry for your loss."
+    self.pool = 0
+    prompt "You have $#{money} remaining."
+  end
+
+  def win
+    clear_screen
+    prompt "Here are the #{pool} dollars you have earned."
+    pay_out
+    prompt "This brings your total to: #{money}"
   end
 
   private
 
   attr_writer :money
+
+  def wager(amount)
+    self.money = money - amount
+    self.pool += amount
+  end
+
+  def hit_or_stay(deck)
+    prompt "Would you like to hit?"
+    return deck.deal(1, hand) if yes?
+    self.stay = true
+  end
+
+  def display_pool
+    clear_screen_prompt_new_line "Pool: $#{pool}"
+  end
 end
 
 class Dealer < Player
   def display_first_card
     hand.first.display_front
-    hand.last.display_back
+    hand.first.display_back
+    update_hand_value
+    display_hand_value
+  end
+
+  def turn(deck)
+    deal_self(deck)
+    loop do
+      hit_or_stay(deck)
+      break if bust? || stay
+    end
+  end
+
+  private
+
+  def hit_or_stay(deck) # Dealer
+    if hand_value < 17
+      deal_self(deck)
+    else
+      self.stay = true
+    end
+  end
+
+  def deal_self(deck)
+    deck.deal 1, hand
+    update_hand_value
   end
 end
 
 class TwentyOne
   include Designable, Validatable, Requestable
 
+  WIN_POINT = 21
   CARD_VALUES = { 'A' => 11, '2' => 2, '3' => 3, '4' => 4,
                   '5' => 5, '6' => 6, '7' => 7, '8' => 8, '9' => 9,
                   '10' => 10, 'J' => 10, 'Q' => 10, 'K' => 10 }
 
   def initialize
     @deck = Deck.new
-    @player = Human.new
-    @dealer = Dealer.new("Phil")
+    @player = Human.new(request_name)
+    @dealer = Dealer.new("Dealer")
     @pool = 0
     @winner = nil
-    @win_point = nil
   end
 
   def play
@@ -320,11 +449,11 @@ class TwentyOne
   private
 
   attr_accessor :deck, :pool, :winner
-  attr_reader :player, :dealer, :win_point
+  attr_reader :player, :dealer
 
   def display_welcome_message
     clear_screen
-    prompt "Welcome to Twenty_One"
+    prompt "Welcome to Twenty_One, #{player.name}."
   end
 
   def rules_explanation
@@ -342,28 +471,13 @@ class TwentyOne
     clear_screen
     rules_explanation
     new_line
-  end
-
-  def offer_game_settings
-    prompt "What point value would you like to play to: 21, 41, 60"
-    @win_point = read_integer_response_of_options([21, 41, 60])
+    continue_with_enter
   end
 
   def run_intro
     display_welcome_message
     sleep(2)
-    player.name = request_name
     offer_rules
-    @win_point = offer_game_settings
-  end
-
-  def openning_wager
-    prompt "Before we play, you must make your wager."
-    prompt "We accept anywhere from $1 to $20. We only operate in dollars."
-    prompt "It seems you presently have #{yellow('$' + player.money.to_s)}"
-    wager = read_integer_response_between(1, 20)
-    player.wager wager
-    self.pool += wager
   end
 
   def reset
@@ -374,109 +488,33 @@ class TwentyOne
 
   def initial_deal
     deck.deal 2, player.hand
-    deck.deal 2, dealer.hand
+    deck.deal 1, dealer.hand
   end
 
-  def display_pool
-    clear_screen_prompt_new_line "Pool: $#{pool}"
-  end
-
-  def count_aces(cards)
-    cards.select { |card| card.rank == 'A' }.size
-  end
-
-  def bust?(value)
-    if value.is_a? Array
-      value = evaluate(value)
-    end
-
-    value > win_point
-  end
-
-  def evaluate(cards_arr)
-    sum = 0
-    cards_arr.each { |card| sum += CARD_VALUES[card.rank] }
-
-    ace_count = count_aces(cards_arr)
-
-    until ace_count.zero?
-      break if !bust?(sum)
-      ace_count -= 1
-      sum -= 10
-    end
-
-    sum
-  end
-
-  def display_hand_value(owner, hand)
-    new_line
-    prompt "#{owner}'s Hand Value: #{evaluate(hand)}."
-  end
-
-  def display_dealer_first_card
-    dealer.display_first_card
-    display_hand_value(dealer, [dealer.hand[0]])
-  end
-
-  def display_player_hand
-    player.display_hand
-    display_hand_value(player, player.hand)
-  end
-
-  def player_hit_or_stay
-    prompt "Would you like to hit?"
-    return deck.deal(1, player.hand) if yes?
-    player.stay = true
-  end
-
-  def player_turn
-    loop do
-      display_pool
-      display_dealer_first_card
-      display_player_hand
-      player_hit_or_stay
-      break if bust?(player.hand) || player.stay
-    end
-  end
-
-  def dealer_hit_or_stay
-    if evaluate(dealer.hand) < 17
-      deck.deal(1, dealer.hand)
-    else
-      dealer.stay = true
-    end
-  end
-
-  def dealer_turn
-    loop do
-      dealer_hit_or_stay
-      break if bust?(dealer.hand) || dealer.stay
-    end
-  end
-
-  def display_dealer_hand
-    dealer.display_hand
-    display_hand_value(dealer, dealer.hand)
+  def card_phase
+    initial_deal
+    player.turn(deck, dealer)
+    dealer.turn(deck) if !player.bust?
   end
 
   def display_all_hands
     clear_screen
-    display_dealer_hand
-    display_player_hand
+    dealer.display_hand
+    player.display_hand
   end
 
   def by_bust
-    if bust?(player.hand)
+    if player.bust?
       self.winner = dealer
-    elsif bust?(dealer.hand)
+    elsif dealer.bust?
       self.winner = player
     end
   end
 
   def by_hand_value
-    self.winner = if evaluate(player.hand) > evaluate(dealer.hand)
+    self.winner = if player > dealer
                     player
-                  elsif evaluate(dealer.hand) > evaluate(player.hand)
+                  elsif player < dealer
                     dealer
                   end
   end
@@ -494,12 +532,11 @@ class TwentyOne
     continue_with_enter
   end
 
-  def update_pool
-    if winner == player
-      self.pool *= 2
-    else
-      self.pool = 0
-    end
+  def results
+    display_all_hands
+    determine_winner
+    display_winner
+    player.update_pool(winner)
   end
 
   def dealer_won?
@@ -512,57 +549,25 @@ class TwentyOne
     yes?
   end
 
-  def card_phase
-    initial_deal
-    player_turn
-    dealer_turn if !bust?(player.hand)
-  end
-
-  def results
-    display_all_hands
-    determine_winner
-    display_winner
-    update_pool
-  end
-
   def run_game
     loop do
       reset
-      openning_wager if pool.zero?
+      player.openning_wager
 
       card_phase
 
       results
-
+      # binding.pry
       next if !winner
       break if dealer_won? || !double_or_nothing?
     end
   end
 
-  def player_money
-    yellow("$" + player.money.to_s)
-  end
-
-  def loss
-    clear_screen
-    prompt "I am sorry for your loss."
-    self.pool = 0
-    prompt "You have #{player_money} remaining."
-  end
-
-  def win
-    clear_screen
-    prompt "Here are the #{pool} dollars you have earned."
-    player.pay_out pool
-    self.pool = 0
-    prompt "This brings your total to: #{player_money}"
-  end
-
   def pay_out
     if winner == player
-      win
+      player.win
     else
-      loss
+      player.loss
     end
   end
 

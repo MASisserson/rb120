@@ -59,7 +59,7 @@ module Designable
   end
 end
 
-module Validatable # Standard Version
+module Validatable
   def yes_or_no
     answer = nil
     loop do
@@ -119,6 +119,15 @@ module Validatable # Standard Version
       end
     end
   end
+
+  def continue_with_enter
+    loop do
+      print "Press ENTER to continue"
+      input = gets
+      break if input == "\n"
+      puts "Please only press ENTER"
+    end
+  end
 end
 
 class Board
@@ -126,6 +135,7 @@ class Board
   WINNING_LINES = [[1, 2, 3], [4, 5, 6], [7, 8, 9]] + # rows
                   [[1, 4, 7], [2, 5, 8], [3, 6, 9]] + # cols
                   [[1, 5, 9], [3, 5, 7]] # diagonal
+  BOARD_SIZE = 3
 
   def initialize
     @squares = {}
@@ -151,7 +161,7 @@ class Board
 
   def win_condition(marker)
     WINNING_LINES.each do |line|
-      winning_move = two_mark_check(line, marker)
+      winning_move = check_line_almost_full(line, marker)
       next if winning_move.nil?
       return winning_move
     end
@@ -166,7 +176,6 @@ class Board
     full? || someone_won?
   end
 
-  # returns winning marker or nil
   def winning_marker
     WINNING_LINES.each do |line|
       full_line_mark = full_line_check(@squares.values_at(*line))
@@ -211,9 +220,9 @@ class Board
     squares.collect(&:marker).first if squares.collect(&:marker).uniq.size == 1
   end
 
-  def two_mark_check(line, marker)
+  def check_line_almost_full(line, marker)
     array = @squares.values_at(*line).collect(&:marker)
-    return unless array.count(marker) == 2 &&
+    return unless array.count(marker) == (BOARD_SIZE - 1) &&
                   array.count(Square::INITIAL_MARKER) == 1
     line.each do |num|
       return num if @squares[num].marker == Square::INITIAL_MARKER
@@ -328,7 +337,7 @@ class TTTGame
     prompt "Please decide on a single character to use as a marker:"
     loop do
       response = read_string_response_of_size 1
-      return response if response != "O"
+      return response if response.upcase != "O"
       prompt "Sorry, Joe got here first and called dibs on that marker."
     end
   end
@@ -344,7 +353,7 @@ class TTTGame
   end
 
   def display_goodbye_message
-    clear_screen_prompt "thanks for playing Tic Tac Toe! Goodbye!"
+    clear_screen_prompt "Thanks for playing Tic Tac Toe! Goodbye!"
   end
 
   def display_board
@@ -449,12 +458,16 @@ class TTTGame
     else                      prompt "It's a tie!"
     end
 
-    sleep(2)
+    continue_with_enter
   end
 
   def display_scores
     prompt_ylw "The score so far:"
-    prompt_ylw "#{human.name}: #{human.score}"
+    if human.name.strip == "Joe"
+      prompt_ylw "You: #{human.score}"
+    else
+      prompt_ylw "#{human.name}: #{human.score}"
+    end
     prompt_ylw "#{computer.name}: #{computer.score}"
     new_line
   end

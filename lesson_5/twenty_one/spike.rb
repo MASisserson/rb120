@@ -1,3 +1,5 @@
+require 'pry'
+
 module Designable
   def colorize(text, color_code)
     "\e[#{color_code}m#{text}\e[0m"
@@ -98,6 +100,7 @@ module Validatable # Standard Version
       answer = read_integer_response
       break if (low..high).include? answer
       prompt "Please input an integer between #{low} and #{high}, inclusive."
+      prompt "You cannot bet money you do not have."
     end
     answer
   end
@@ -276,6 +279,10 @@ class Human < Player
     self.money += amount
   end
 
+  def enough_money?
+    money >= TwentyOne::MIN_WAGER
+  end
+
   private
 
   attr_writer :money
@@ -294,6 +301,7 @@ class TwentyOne
   CARD_VALUES = { 'A' => 11, '2' => 2, '3' => 3, '4' => 4,
                   '5' => 5, '6' => 6, '7' => 7, '8' => 8, '9' => 9,
                   '10' => 10, 'J' => 10, 'Q' => 10, 'K' => 10 }
+  MIN_WAGER = 10
 
   def initialize
     @deck = Deck.new
@@ -311,7 +319,7 @@ class TwentyOne
       run_game
 
       pay_out
-      break unless play_again?
+      break unless player.enough_money? && play_again?
     end
 
     display_goodbye_message
@@ -351,17 +359,18 @@ class TwentyOne
 
   def run_intro
     display_welcome_message
-    sleep(2)
+    sleep 1
     player.name = request_name
     offer_rules
     @win_point = offer_game_settings
   end
 
   def openning_wager
+    clear_screen
     prompt "Before we play, you must make your wager."
-    prompt "We accept anywhere from $1 to $20. We only operate in dollars."
+    prompt "We accept a minimum wager of $#{MIN_WAGER}. We only operate in dollars."
     prompt "It seems you presently have #{yellow('$' + player.money.to_s)}"
-    wager = read_integer_response_between(1, 20)
+    wager = read_integer_response_between(MIN_WAGER, player.money)
     player.wager wager
     self.pool += wager
   end
@@ -425,8 +434,11 @@ class TwentyOne
 
   def player_hit_or_stay
     prompt "Would you like to hit?"
-    return deck.deal(1, player.hand) if yes?
-    player.stay = true
+    if yes?
+      deck.deal(1, player.hand)
+    else
+      player.stay = true
+    end
   end
 
   def player_turn
@@ -435,12 +447,12 @@ class TwentyOne
       display_dealer_first_card
       display_player_hand
       player_hit_or_stay
-      break if bust?(player.hand) || player.stay
+      break if bust?(player.hand) || (player.stay == true)
     end
   end
 
   def dealer_hit_or_stay
-    if evaluate(dealer.hand) < 17
+    if evaluate(dealer.hand) < (win_point - 4)
       deck.deal(1, dealer.hand)
     else
       dealer.stay = true
@@ -450,7 +462,7 @@ class TwentyOne
   def dealer_turn
     loop do
       dealer_hit_or_stay
-      break if bust?(dealer.hand) || dealer.stay
+      break if bust?(dealer.hand) || (dealer.stay == true)
     end
   end
 
@@ -522,7 +534,6 @@ class TwentyOne
     display_all_hands
     determine_winner
     display_winner
-    update_pool
   end
 
   def run_game
@@ -535,6 +546,7 @@ class TwentyOne
       results
 
       next if !winner
+      update_pool
       break if dealer_won? || !double_or_nothing?
     end
   end
@@ -547,7 +559,7 @@ class TwentyOne
     clear_screen
     prompt "I am sorry for your loss."
     self.pool = 0
-    prompt "You have #{player_money} remaining."
+    prompt "You have #{player_money}"
   end
 
   def win
