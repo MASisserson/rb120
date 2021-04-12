@@ -1,5 +1,3 @@
-require 'pry'
-
 module Designable
   def colorize(text, color_code)
     "\e[#{color_code}m#{text}\e[0m"
@@ -63,7 +61,7 @@ module Designable
   end
 end
 
-module Validatable # Standard Version
+module Validatable
   def yes?
     answer = nil
     loop do
@@ -256,6 +254,11 @@ class Player
 
   def reset
     self.hand = []
+    self.stay = false
+  end
+
+  def stay?
+    stay
   end
 
   def to_s
@@ -368,7 +371,7 @@ class TwentyOne
   def openning_wager
     clear_screen
     prompt "Before we play, you must make your wager."
-    prompt "We accept a minimum wager of $#{MIN_WAGER}. We only operate in dollars."
+    prompt "We accept a minimum wager of $#{MIN_WAGER}. We only take dollars."
     prompt "It seems you presently have #{yellow('$' + player.money.to_s)}"
     wager = read_integer_response_between(MIN_WAGER, player.money)
     player.wager wager
@@ -376,6 +379,7 @@ class TwentyOne
   end
 
   def reset
+    @winner = nil
     deck.reset
     player.reset
     dealer.reset
@@ -447,7 +451,7 @@ class TwentyOne
       display_dealer_first_card
       display_player_hand
       player_hit_or_stay
-      break if bust?(player.hand) || (player.stay == true)
+      break if bust?(player.hand) || player.stay?
     end
   end
 
@@ -462,7 +466,7 @@ class TwentyOne
   def dealer_turn
     loop do
       dealer_hit_or_stay
-      break if bust?(dealer.hand) || (dealer.stay == true)
+      break if bust?(dealer.hand) || dealer.stay?
     end
   end
 
